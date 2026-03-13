@@ -240,3 +240,199 @@ success: GET http://localhost:3000/cats/validate?age=20
 error: GET http://localhost:3000/cats/validate?age=15
 
 ![](/public/Img/validationerror.png)
+
+NestJS এ `Exception Filter` হলো এমন একটি মেকানিজম যা অ্যাপ্লিকেশনে হওয়া errors / exceptions ধরার (catch করার) এবং সেগুলোকে custom response হিসেবে client-কে পাঠানোর জন্য ব্যবহার করা হয়।
+
+সহজভাবে বললে:
+➡️ Application এ যদি error হয়, Exception Filter সেই error handle করে সুন্দর response পাঠায়।
+
+---
+
+#### সাধারণভাবে Error কিভাবে আসে
+
+ধরো controller এ এমন code আছে:
+
+```ts
+@Get()
+findAll() {
+  throw new Error("Something went wrong");
+}
+```
+
+এখানে যদি error হয়, server crash না হয়ে NestJS সেই error handle করে।
+
+NestJS এর built-in class আছে:
+
+* `HttpException`
+* `BadRequestException`
+* `NotFoundException`
+* `UnauthorizedException`
+
+উদাহরণ:
+
+```ts
+import { NotFoundException } from '@nestjs/common';
+
+@Get(':id')
+findOne() {
+  throw new NotFoundException('User not found');
+}
+```
+
+Response হবে:
+
+```json
+{
+  "statusCode": 404,
+  "message": "User not found",
+  "error": "Not Found"
+}
+```
+
+---
+
+#### Exception Filter এর basic structure
+
+```ts
+import {
+  ExceptionFilter,
+  Catch,
+  ArgumentsHost,
+  HttpException,
+} from '@nestjs/common';
+
+@Catch(HttpException)
+export class HttpExceptionFilter implements ExceptionFilter {
+
+  catch(exception: HttpException, host: ArgumentsHost) {
+
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse();
+    const request = ctx.getRequest();
+
+    const status = exception.getStatus();
+
+    response.status(status).json({
+      statusCode: status,
+      message: exception.message,
+      path: request.url,
+    });
+  }
+}
+```
+
+---
+
+#### Code explanation
+
+#### `@Catch(HttpException)`
+
+মানে এই filter HttpException ধরবে
+
+@Catch(HttpException)
+
+---
+
+#### `ExceptionFilter`
+
+এটা NestJS এর interface
+
+implements ExceptionFilter
+
+---
+
+#### `catch()` method
+
+যখন exception হবে তখন এই method run হবে
+
+catch(exception, host)
+
+---
+
+#### `ArgumentsHost`
+
+এটা দিয়ে request / response পাওয়া যায়
+
+const ctx = host.switchToHttp();
+
+---
+
+#### response পাঠানো
+
+response.status(status).json({...})
+
+---
+
+#### Controller এ filter ব্যবহার করা
+
+```ts
+@UseFilters(HttpExceptionFilter)
+@Controller('users')
+export class UsersController {}
+```
+
+---
+
+#### Global Exception Filter
+
+`main.ts`
+
+```ts
+app.useGlobalFilters(new HttpExceptionFilter());
+```
+
+এখন পুরো application এ error handle করবে।
+
+---
+
+#### Real world example
+
+ধরো API response সব সময় এমন হবে:
+
+Success:
+
+```json
+{
+  "success": true,
+  "data": {...}
+}
+```
+
+Error:
+
+```json
+{
+  "success": false,
+  "message": "Something went wrong"
+}
+```
+
+এই format maintain করার জন্য Exception Filter ব্যবহার করা হয়।
+
+---
+
+#### NestJS lifecycle এ Exception Filter কোথায় কাজ করে
+
+Request flow:
+
+```
+Request
+   ↓
+Middleware
+   ↓
+Guards
+   ↓
+Interceptors
+   ↓
+Pipes
+   ↓
+Controller
+   ↓
+Service
+   ↓
+Exception Filter (error হলে)
+```
+
+মানে error হলে শেষে Exception Filter কাজ করে।
+
+---
