@@ -88,3 +88,155 @@ export class CatsController {
 
 #### Output view
 ![](/public/Img/forbidden.png)
+
+
+#### HttpException
+
+```bash
+# cats.service.ts
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class CatsService {
+    private users = [
+        { id:1110, name:'Wasim', age:28 },
+        { id:1111, name:'Ismail', age:28 }
+    ];
+
+    getAllUsers(){
+        return this.users;
+    }
+
+    getUserById(id: number){
+        const user =  this.users.find((u) => u.id === id);
+        if(!user){
+            throw new Error(`User with id ${id} not found`);
+        }
+        return user;
+    }
+
+    // Database connection error simulate
+    simulateDatabaseError(){
+        throw new Error('Database connection failed!')
+    }
+
+    // Validation error simulate
+    validateUserAge(age: number){
+        if(age < 18) {
+            throw new Error('User must be at least 18 years old')
+        }
+        return { message: 'Age is valid' };
+    }
+}
+```
+
+```bash
+# cats.controller.ts
+import { Controller, Get, HttpException, HttpStatus, Param, Query } from '@nestjs/common';
+import { CatsService } from './cats.service';
+
+@Controller('cats')
+export class CatsController {
+    constructor(private readonly catsService: CatsService){}
+
+    
+    @Get('simple-error')
+    simpleError(){
+        try {
+            this.catsService.simulateDatabaseError();
+        } catch (error) {
+            // just message override
+            throw new HttpException(
+                'Database error occurred!',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    @Get('custom-error')
+    async customError(){
+        try {
+            await this.catsService.simulateDatabaseError();
+        } catch (error) {
+            throw new HttpException({
+                status: HttpStatus.FORBIDDEN,
+                error: 'This is a custom message',
+                timestamp: new Date().toISOString(),
+                path: '/cats/custom-error'
+            }, HttpStatus.FORBIDDEN, {
+                cause: error
+            })
+        }
+    }
+
+    // If the user is not found, an error will be returned.
+    @Get('user/:id')
+    getUserById(@Param('id') id: string){
+        try {
+            const userId = parseInt(id);
+            return this.catsService.getUserById(userId);
+        } catch (error) {
+            throw new HttpException({
+                status: HttpStatus.NOT_FOUND,
+                error: 'User not found',
+                message: error.message,
+                requestedId: id
+            },HttpStatus.FORBIDDEN,{
+                cause: error
+            })
+        }
+    }
+
+    // validation error
+    @Get('validation')
+    validateUser(@Query('age') age: string){
+        try {
+            const userAge = parseInt(age);
+            return this.catsService.validateUserAge(userAge);
+        } catch (error) {
+            throw new HttpException({
+                status: HttpStatus.BAD_REQUEST,
+                error: 'Validation failed',
+                message: error.message,
+                providedAge: age
+            }, HttpStatus.FORBIDDEN, {
+                cause: error
+            })
+        }
+    }
+
+
+}
+```
+
+#### Test---
+
+Hit these URLs in your browser or Postman:
+
+simple-error: GET http://localhost:3000/cats/simple-error
+
+![](/public/Img/simpleerror.png)
+
+custom-error: GET http://localhost:3000/cats/custom-error
+
+![](/public/Img/customerror.png)
+
+Find User:
+
+if real user: GET http://localhost:3000/cats/user/1111
+
+![](/public/Img/useroutput.png)
+
+error: GET http://localhost:3000/cats/user/999
+
+![](/public/Img/usererroroutput.png)
+
+Validation:
+
+success: GET http://localhost:3000/cats/validate?age=20
+
+![](/public/Img/validationsuccess.png)
+
+error: GET http://localhost:3000/cats/validate?age=15
+
+![](/public/Img/validationerror.png)
